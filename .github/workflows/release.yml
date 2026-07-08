@@ -63,31 +63,14 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: 'recursive'
-    - name: Install OpenMP
-      run: brew install libomp
-    - name: Setup Vulkan SDK
-      uses: jakoch/install-vulkan-sdk-action@v1
-      with:
-        vulkan_version: 1.4.350.0
-        cache: true
+    - name: Install dependencies
+      run: |
+        brew install libomp molten-vk glslang
     - name: Locate MoltenVK
       run: |
-        echo "VULKAN_SDK=$VULKAN_SDK"
-        ls -R "$VULKAN_SDK" 2>/dev/null | head -20
-        MVK_LIB=$(find "$VULKAN_SDK" -name "libMoltenVK.a" -type f 2>/dev/null | head -1)
-        if [ -z "$MVK_LIB" ]; then
-          MVK_LIB=$(find /Users/runner -name "libMoltenVK.a" -type f 2>/dev/null | head -1)
-        fi
-        echo "LIBMVK=$MVK_LIB" >> $GITHUB_ENV
-        if [ -n "$MVK_LIB" ]; then
-          MVK_INCLUDE=$(dirname "$MVK_LIB" | sed 's|/MoltenVK.xcframework.*|/include|')
-          echo "MVK_INCLUDE=$MVK_INCLUDE" >> $GITHUB_ENV
-          echo "Found MoltenVK: $MVK_LIB"
-          echo "Include: $MVK_INCLUDE"
-        else
-          echo "ERROR: MoltenVK not found!"
-          exit 1
-        fi
+        echo "MVK_LIB=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" >> $GITHUB_ENV
+        echo "MVK_INCLUDE=$(brew --prefix molten-vk)/include" >> $GITHUB_ENV
+        echo "VULKAN_HEADERS=$(brew --prefix vulkan-headers)/include" >> $GITHUB_ENV
     - name: build
       run: |
         mkdir build && cd build
@@ -96,9 +79,8 @@ jobs:
           -DOpenMP_C_FLAGS="-Xclang -fopenmp" -DOpenMP_CXX_FLAGS="-Xclang -fopenmp" \
           -DOpenMP_C_LIB_NAMES="libomp" -DOpenMP_CXX_LIB_NAMES="libomp" \
           -DOpenMP_libomp_LIBRARY="$(brew --prefix libomp)/lib/libomp.a" \
-          -DOpenMP_libomp_INCLUDE_DIR="$(brew --prefix libomp)/include" \
-          -DVulkan_INCLUDE_DIR="$MVK_INCLUDE" \
-          -DVulkan_LIBRARY="$LIBMVK" \
+          -DVulkan_INCLUDE_DIR="$VULKAN_HEADERS" \
+          -DVulkan_LIBRARY="$MVK_LIB" \
           ../src
         cmake --build . -j $(sysctl -n hw.ncpu)
     - name: package
