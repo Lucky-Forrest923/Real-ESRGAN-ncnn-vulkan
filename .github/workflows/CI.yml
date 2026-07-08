@@ -2,95 +2,73 @@ name: CI
 on: [push, pull_request]
 
 jobs:
-  windows:
-    runs-on: windows-latest
-    steps:
-    - uses: actions/checkout@v2
-      with:
-        submodules: 'recursive'
-    - name: cache-vulkansdk
-      id: cache-vulkansdk
-      uses: actions/cache@v4
-      with:
-        path: "VulkanSDK"
-        key: VulkanSDK-1.2.162.0-Installer
-    - name: vulkansdk
-      if: steps.cache-vulkansdk.outputs.cache-hit != 'true'
-      run: |
-        Invoke-WebRequest -Uri https://sdk.lunarg.com/sdk/download/1.2.162.0/windows/VulkanSDK-1.2.162.0-Installer.exe?Human=true -OutFile VulkanSDK-1.2.162.0-Installer.exe
-        7z x -aoa ./VulkanSDK-1.2.162.0-Installer.exe -oVulkanSDK
-        Remove-Item .\VulkanSDK\Demos, .\VulkanSDK\Samples, .\VulkanSDK\Third-Party, .\VulkanSDK\Tools, .\VulkanSDK\Tools32, .\VulkanSDK\Bin32, .\VulkanSDK\Lib32 -Recurse
-    - name: build
-      run: |
-        $env:VULKAN_SDK="$(pwd)/VulkanSDK"
-        mkdir build; cd build
-        cmake -A x64 ../src
-        cmake --build . --config Release -j 2
-
   ubuntu:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       with:
         submodules: 'recursive'
-    - name: cache-vulkansdk
-      id: cache-vulkansdk
-      uses: actions/cache@v4
-      with:
-        path: "1.2.162.0"
-        key: vulkansdk-linux-x86_64-1.2.162.0
-    - name: vulkansdk
-      if: steps.cache-vulkansdk.outputs.cache-hit != 'true'
+    - name: Install Vulkan SDK & glslang
       run: |
-        wget https://sdk.lunarg.com/sdk/download/1.2.162.0/linux/vulkansdk-linux-x86_64-1.2.162.0.tar.gz?Human=true -O vulkansdk-linux-x86_64-1.2.162.0.tar.gz
-        tar -xf vulkansdk-linux-x86_64-1.2.162.0.tar.gz
-        rm -rf 1.2.162.0/source 1.2.162.0/samples
-        find 1.2.162.0 -type f | grep -v -E 'vulkan|glslang' | xargs rm
+        sudo apt-get update
+        sudo apt-get install -y libvulkan-dev glslang-tools
     - name: build
       run: |
-        export VULKAN_SDK=`pwd`/1.2.162.0/x86_64
         mkdir build && cd build
         cmake ../src
-        cmake --build . -j 2
+        cmake --build . -j $(nproc)
 
   macos:
     runs-on: macos-latest
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_12.4.app/Contents/Developer
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       with:
         submodules: 'recursive'
-    - name: cache-vulkansdk
-      id: cache-vulkansdk
-      uses: actions/cache@v4
+    - name: Install OpenMP
+      run: brew install libomp
+    - name: Setup Vulkan SDK
+      uses: jakoch/install-vulkan-sdk-action@v1
       with:
-        path: "vulkansdk-macos-1.2.162.0"
-        key: vulkansdk-macos-1.2.162.0
-    - name: vulkansdk
-      if: steps.cache-vulkansdk.outputs.cache-hit != 'true'
+        vulkan_version: 1.4.350.0
+        cache: true
+    - name: Locate MoltenVK
       run: |
-        wget https://sdk.lunarg.com/sdk/download/1.2.162.0/mac/vulkansdk-macos-1.2.162.0.dmg?Human=true -O vulkansdk-macos-1.2.162.0.dmg
-        hdiutil attach vulkansdk-macos-1.2.162.0.dmg
-        cp -r /Volumes/vulkansdk-macos-1.2.162.0 .
-        rm -rf vulkansdk-macos-1.2.162.0/Applications
-        find vulkansdk-macos-1.2.162.0 -type f | grep -v -E 'vulkan|glslang|MoltenVK' | xargs rm
-        hdiutil detach /Volumes/vulkansdk-macos-1.2.162.0
-    - name: build-x86_64
+        MVK_LIB=$(find "$VULKAN_SDK" -name "libMoltenVK.a" -type f 2>/dev/null | head -1)
+        if [ -z "$MVK_LIB" ]; then
+          MVK_LIB=$(find /Users/runner -name "libMoltenVK.a" -type f 2>/dev/null | head -1)
+        fi
+        echo "LIBMVK=$MVK_LIB" >> $GITHUB_ENV
+        MVK_INCLUDE=$(dirname "$MVK_LIB" | sed 's|/MoltenVK.xcframework.*|/include|')
+        echo "MVK_INCLUDE=$MVK_INCLUDE" >> $GITHUB_ENV
+        echo "Found MoltenVK: $MVK_LIB"
+    - name: build
       run: |
-        export VULKAN_SDK=`pwd`/vulkansdk-macos-1.2.162.0/macOS
-        mkdir build-x86_64 && cd build-x86_64
-        cmake -DUSE_STATIC_MOLTENVK=ON -DCMAKE_OSX_ARCHITECTURES="x86_64" \
-            -DVulkan_INCLUDE_DIR=`pwd`/../vulkansdk-macos-1.2.162.0/MoltenVK/include \
-            -DVulkan_LIBRARY=`pwd`/../vulkansdk-macos-1.2.162.0/MoltenVK/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.a \
-            ../src
-        cmake --build . -j 3
-    - name: build-arm64
+        mkdir build && cd build
+        cmake -DUSE_STATIC_MOLTENVK=ON \
+          -DOpenMP_C_FLAGS="-Xclang -fopenmp" -DOpenMP_CXX_FLAGS="-Xclang -fopenmp" \
+          -DOpenMP_C_LIB_NAMES="libomp" -DOpenMP_CXX_LIB_NAMES="libomp" \
+          -DOpenMP_libomp_LIBRARY="$(brew --prefix libomp)/lib/libomp.a" \
+          -DOpenMP_libomp_INCLUDE_DIR="$(brew --prefix libomp)/include" \
+          -DVulkan_INCLUDE_DIR="$MVK_INCLUDE" \
+          -DVulkan_LIBRARY="$LIBMVK" \
+          ../src
+        cmake --build . -j $(sysctl -n hw.ncpu)
+
+  windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+    - name: Setup Vulkan SDK
+      uses: jakoch/install-vulkan-sdk-action@v1
+      with:
+        vulkan_version: 1.4.350.0
+        cache: true
+    - name: build
+      shell: cmd
       run: |
-        export VULKAN_SDK=`pwd`/vulkansdk-macos-1.2.162.0/macOS
-        mkdir build-arm64 && cd build-arm64
-        cmake -DUSE_STATIC_MOLTENVK=ON -DCMAKE_OSX_ARCHITECTURES="arm64" \
-            -DVulkan_INCLUDE_DIR=`pwd`/../vulkansdk-macos-1.2.162.0/MoltenVK/include \
-            -DVulkan_LIBRARY=`pwd`/../vulkansdk-macos-1.2.162.0/MoltenVK/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.a \
-            ../src
-        cmake --build . -j 3
+        mkdir build
+        cd build
+        cmake -A x64 ..\src
+        cmake --build . --config Release -j 2
