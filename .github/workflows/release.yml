@@ -65,12 +65,12 @@ jobs:
         submodules: 'recursive'
     - name: Install dependencies
       run: |
-        brew install libomp molten-vk glslang
-    - name: Locate MoltenVK
+        brew install libomp molten-vk glslang vulkan-headers
+    - name: Locate Vulkan paths
       run: |
-        echo "MVK_LIB=$(brew --prefix molten-vk)/lib/libMoltenVK.dylib" >> $GITHUB_ENV
-        echo "MVK_INCLUDE=$(brew --prefix molten-vk)/include" >> $GITHUB_ENV
-        echo "VULKAN_HEADERS=$(brew --prefix vulkan-headers)/include" >> $GITHUB_ENV
+        echo "VULKAN_HEADERS_DIR=$(brew --prefix vulkan-headers)/include" >> $GITHUB_ENV
+        echo "MVK_LIB=$(find /opt/homebrew -name 'libMoltenVK.dylib' -o -name 'libMoltenVK.a' 2>/dev/null | head -1)" >> $GITHUB_ENV
+        echo "VULKAN_LIB_DIR=$(find /opt/homebrew -name 'libvulkan.dylib' -o -name 'vulkan' -type d 2>/dev/null | head -1)" >> $GITHUB_ENV
     - name: build
       run: |
         mkdir build && cd build
@@ -79,7 +79,7 @@ jobs:
           -DOpenMP_C_FLAGS="-Xclang -fopenmp" -DOpenMP_CXX_FLAGS="-Xclang -fopenmp" \
           -DOpenMP_C_LIB_NAMES="libomp" -DOpenMP_CXX_LIB_NAMES="libomp" \
           -DOpenMP_libomp_LIBRARY="$(brew --prefix libomp)/lib/libomp.a" \
-          -DVulkan_INCLUDE_DIR="$VULKAN_HEADERS" \
+          -DVulkan_INCLUDE_DIR="$VULKAN_HEADERS_DIR" \
           -DVulkan_LIBRARY="$MVK_LIB" \
           ../src
         cmake --build . -j $(sysctl -n hw.ncpu)
