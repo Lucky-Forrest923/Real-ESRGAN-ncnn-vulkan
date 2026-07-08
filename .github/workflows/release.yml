@@ -73,12 +73,14 @@ jobs:
         echo "VULKAN_LIB_DIR=$(find /opt/homebrew -name 'libvulkan.dylib' -o -name 'vulkan' -type d 2>/dev/null | head -1)" >> $GITHUB_ENV
     - name: build
       run: |
+        export OMP_ROOT="$(brew --prefix libomp)"
         mkdir build && cd build
         cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
           -DUSE_STATIC_MOLTENVK=ON \
-          -DOpenMP_C_FLAGS="-Xclang -fopenmp" -DOpenMP_CXX_FLAGS="-Xclang -fopenmp" \
+          -DOpenMP_C_FLAGS="-Xclang -fopenmp -I$OMP_ROOT/include" \
+          -DOpenMP_CXX_FLAGS="-Xclang -fopenmp -I$OMP_ROOT/include" \
           -DOpenMP_C_LIB_NAMES="libomp" -DOpenMP_CXX_LIB_NAMES="libomp" \
-          -DOpenMP_libomp_LIBRARY="$(brew --prefix libomp)/lib/libomp.a" \
+          -DOpenMP_libomp_LIBRARY="$OMP_ROOT/lib/libomp.a" \
           -DVulkan_INCLUDE_DIR="$VULKAN_HEADERS_DIR" \
           -DVulkan_LIBRARY="$MVK_LIB" \
           ../src
