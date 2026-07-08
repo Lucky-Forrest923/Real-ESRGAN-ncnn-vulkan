@@ -38,7 +38,7 @@ jobs:
     - name: build
       run: |
         mkdir build && cd build
-        cmake ../src
+        cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ../src
         cmake --build . -j $(nproc)
     - name: package
       run: |
@@ -91,7 +91,8 @@ jobs:
     - name: build
       run: |
         mkdir build && cd build
-        cmake -DUSE_STATIC_MOLTENVK=ON \
+        cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+          -DUSE_STATIC_MOLTENVK=ON \
           -DOpenMP_C_FLAGS="-Xclang -fopenmp" -DOpenMP_CXX_FLAGS="-Xclang -fopenmp" \
           -DOpenMP_C_LIB_NAMES="libomp" -DOpenMP_CXX_LIB_NAMES="libomp" \
           -DOpenMP_libomp_LIBRARY="$(brew --prefix libomp)/lib/libomp.a" \
@@ -133,7 +134,7 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake -A x64 ..\src
+        cmake -A x64 -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ..\src
         cmake --build . --config Release -j 2
     - name: package
       shell: pwsh
